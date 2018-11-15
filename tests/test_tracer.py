@@ -494,11 +494,10 @@ class DummyWriter(AgentWriter):
         # dummy components
         self.spans = []
         self.traces = []
-        self.services = {}
         self.json_encoder = JSONEncoder()
         self.msgpack_encoder = MsgpackEncoder()
 
-    def write(self, spans=None, services=None):
+    def write(self, spans=None):
         if spans:
             # the traces encoding expect a list of traces so we
             # put spans in a list like we do in the real execution path
@@ -508,11 +507,6 @@ class DummyWriter(AgentWriter):
             self.msgpack_encoder.encode_traces(trace)
             self.spans += spans
             self.traces += trace
-
-        if services:
-            self.json_encoder.encode_services(services)
-            self.msgpack_encoder.encode_services(services)
-            self.services.update(services)
 
     def pop(self):
         # dummy method
@@ -525,12 +519,6 @@ class DummyWriter(AgentWriter):
         traces = self.traces
         self.traces = []
         return traces
-
-    def pop_services(self):
-        # dummy method
-        s = self.services
-        self.services = {}
-        return s
 
 
 def get_dummy_tracer():
