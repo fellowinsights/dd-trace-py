@@ -11,12 +11,12 @@ from ...pin import Pin
 from ...utils.wrappers import unwrap as _u
 
 span_name = 'httplib.request' if PY2 else 'http.client.request'
-
+service_name = "httplib" if PY2 else "http.client"
 log = logging.getLogger(__name__)
 
 
 def _wrap_init(func, instance, args, kwargs):
-    Pin(app='httplib', service=None, app_type=ext_http.TYPE).onto(instance)
+    Pin(app=service_name, service=service_name, app_type=ext_http.TYPE).onto(instance)
     return func(*args, **kwargs)
 
 
