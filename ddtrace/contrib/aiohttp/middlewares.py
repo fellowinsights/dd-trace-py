@@ -1,10 +1,11 @@
 import asyncio
 
 from ..asyncio import context_provider
-from ...ext import AppTypes, http
 from ...compat import stringify
-from ...context import Context
+from ...constants import EVENT_SAMPLE_RATE_KEY
+from ...ext import AppTypes, http
 from ...propagation.http import HTTPPropagator
+from ...settings import config
 
 
 CONFIG_KEY = 'datadog_trace'
@@ -45,6 +46,10 @@ def trace_middleware(app, handler):
             span_type=http.TYPE,
         )
 
+        # Configure trace search sample rate
+        if config.aiohttp.event_sample_rate is not None:
+            request_span.set_tag(EVENT_SAMPLE_RATE_KEY, config.aiohttp.event_sample_rate)
+
         # attach the context and the root span to the request; the Context
         # may be freely used by the application code
         request[REQUEST_CONTEXT_KEY] = request_span.context
@@ -82,6 +87,9 @@ def on_prepare(request, response):
             resource = res_info.get('formatter')
         elif res_info.get('prefix'):
             resource = res_info.get('prefix')
+
+        # prefix the resource name by the http method
+        resource = '{} {}'.format(request.method, resource)
 
     request_span.resource = resource
     request_span.set_tag('http.method', request.method)

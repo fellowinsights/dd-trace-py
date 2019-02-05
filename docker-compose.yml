@@ -28,7 +28,7 @@ services:
         ports:
             - "127.0.0.1:3306:3306"
     redis:
-        image: redis:3.2-alpine
+        image: redis:4.0-alpine
         ports:
             - "127.0.0.1:6379:6379"
     rediscluster:
@@ -94,6 +94,7 @@ services:
             - ./tests:/src/tests:ro
             - ./setup.cfg:/src/setup.cfg:ro
             - ./setup.py:/src/setup.py:ro
+            - ./conftest.py:/src/conftest.py:ro
             - ./tox.ini:/src/tox.ini:ro
             - ./.ddtox:/src/.tox
         command: bash

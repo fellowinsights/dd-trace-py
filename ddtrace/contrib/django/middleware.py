@@ -4,9 +4,11 @@ import logging
 from .conf import settings
 from .compat import user_is_authenticated, get_resolver
 
-from ...ext import http
+from ...constants import EVENT_SAMPLE_RATE_KEY
 from ...contrib import func_name
+from ...ext import http
 from ...propagation.http import HTTPPropagator
+from ...settings import config
 
 # 3p
 from django.core.exceptions import MiddlewareNotUsed
@@ -47,25 +49,30 @@ def get_middleware_insertion_point():
         return MIDDLEWARE, middleware
     return MIDDLEWARE_CLASSES, getattr(django_settings, MIDDLEWARE_CLASSES, None)
 
+
 def insert_trace_middleware():
     middleware_attribute, middleware = get_middleware_insertion_point()
     if middleware is not None and TRACE_MIDDLEWARE not in set(middleware):
         setattr(django_settings, middleware_attribute, type(middleware)((TRACE_MIDDLEWARE,)) + middleware)
+
 
 def remove_trace_middleware():
     _, middleware = get_middleware_insertion_point()
     if middleware and TRACE_MIDDLEWARE in set(middleware):
         middleware.remove(TRACE_MIDDLEWARE)
 
+
 def insert_exception_middleware():
     middleware_attribute, middleware = get_middleware_insertion_point()
     if middleware is not None and EXCEPTION_MIDDLEWARE not in set(middleware):
         setattr(django_settings, middleware_attribute, middleware + type(middleware)((EXCEPTION_MIDDLEWARE,)))
 
+
 def remove_exception_middleware():
     _, middleware = get_middleware_insertion_point()
     if middleware and EXCEPTION_MIDDLEWARE in set(middleware):
         middleware.remove(EXCEPTION_MIDDLEWARE)
+
 
 class InstrumentationMixin(MiddlewareClass):
     """
@@ -88,7 +95,7 @@ class TraceExceptionMiddleware(InstrumentationMixin):
             span = _get_req_span(request)
             if span:
                 span.set_tag(http.STATUS_CODE, '500')
-                span.set_traceback() # will set the exception info
+                span.set_traceback()  # will set the exception info
         except Exception:
             log.debug("error processing exception", exc_info=True)
 
@@ -112,6 +119,10 @@ class TraceMiddleware(InstrumentationMixin):
                 resource='unknown',  # will be filled by process view
                 span_type=http.TYPE,
             )
+
+            # Configure trace search sample rate
+            if config.django.event_sample_rate is not None:
+                span.set_tag(EVENT_SAMPLE_RATE_KEY, config.django.event_sample_rate)
 
             span.set_tag(http.METHOD, request.method)
             span.set_tag(http.URL, request.path)
@@ -172,9 +183,11 @@ def _get_req_span(request):
     """ Return the datadog span from the given request. """
     return getattr(request, '_datadog_request_span', None)
 
+
 def _set_req_span(request, span):
     """ Set the datadog span on the given request. """
     return setattr(request, '_datadog_request_span', span)
+
 
 def _set_auth_tags(span, request):
     """ Patch any available auth tags from the request onto the span. """

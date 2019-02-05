@@ -44,7 +44,9 @@ PATCH_MODULES = {
     'aiobotocore': False,
     'httplib': False,
     'vertica': True,
+    'molten': True,
     'jinja2': True,
+    'mako': True,
     'flask': True,
     'kombu': False,
 
@@ -53,6 +55,9 @@ PATCH_MODULES = {
     "falcon": False,
     "pylons": False,
     "pyramid": False,
+
+    # Standard library modules off by default
+    'logging': False,
 }
 
 _LOCK = threading.Lock()
@@ -99,6 +104,7 @@ def patch_all(**patch_modules):
 
     patch(raise_errors=False, **modules)
 
+
 def patch(raise_errors=True, **patch_modules):
     """Patch only a set of given modules.
 
@@ -125,10 +131,12 @@ def patch(raise_errors=True, **patch_modules):
             patch_module(module, raise_errors=raise_errors)
 
     patched_modules = get_patched_modules()
-    log.info("patched %s/%s modules (%s)",
+    log.info(
+        "patched %s/%s modules (%s)",
         len(patched_modules),
         len(modules),
-        ",".join(patched_modules))
+        ",".join(patched_modules),
+    )
 
 
 def patch_module(module, raise_errors=True):
@@ -144,10 +152,12 @@ def patch_module(module, raise_errors=True):
         log.debug("failed to patch %s: %s", module, exc)
         return False
 
+
 def get_patched_modules():
     """Get the list of patched modules"""
     with _LOCK:
         return sorted(_PATCHED_MODULES)
+
 
 def _patch_module(module):
     """_patch_module will attempt to monkey patch the module.

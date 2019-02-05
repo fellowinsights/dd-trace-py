@@ -1,11 +1,12 @@
 import collections
+from copy import deepcopy
 import logging
 
-from copy import deepcopy
-
-from .span import Span
 from .pin import Pin
+from .span import Span
+from .utils.attrdict import AttrDict
 from .utils.merge import deepmerge
+from .utils.http import normalize_header_name
 
 
 log = logging.getLogger(__name__)
@@ -27,6 +28,7 @@ class Config(object):
     def __init__(self):
         # use a dict as underlying storing mechanism
         self._config = {}
+        self._http = HttpConfig()
 
     def __getattr__(self, name):
         if name not in self._config:
@@ -75,13 +77,33 @@ class Config(object):
         else:
             self._config[integration] = IntegrationConfig(self, settings)
 
+    def trace_headers(self, whitelist):
+        """
+        Registers a set of headers to be traced at global level or integration level.
+        :param whitelist: the case-insensitive list of traced headers
+        :type whitelist: list of str or str
+        :return: self
+        :rtype: HttpConfig
+        """
+        self._http.trace_headers(whitelist)
+        return self
+
+    def header_is_traced(self, header_name):
+        """
+        Returns whether or not the current header should be traced.
+        :param header_name: the header name
+        :type header_name: str
+        :rtype: bool
+        """
+        return self._http.header_is_traced(header_name)
+
     def __repr__(self):
         cls = self.__class__
         integrations = ', '.join(self._config.keys())
         return '{}.{}({})'.format(cls.__module__, cls.__name__, integrations)
 
 
-class IntegrationConfig(dict):
+class IntegrationConfig(AttrDict):
     """
     Integration specific configuration object.
 
@@ -92,9 +114,9 @@ class IntegrationConfig(dict):
         # This is an `IntegrationConfig`
         config.flask
 
-        # `IntegrationConfig` supports both item and attribute accessors
-        config.flask.service_name = 'my-service-name'
+        # `IntegrationConfig` supports both attribute and item accessors
         config.flask['service_name'] = 'my-service-name'
+        config.flask.service_name = 'my-service-name'
     """
     def __init__(self, global_config, *args, **kwargs):
         """
@@ -104,13 +126,35 @@ class IntegrationConfig(dict):
         :param kwargs:
         """
         super(IntegrationConfig, self).__init__(*args, **kwargs)
-        self.global_config = global_config
-        self.hooks = Hooks()
+
+        # Set internal properties for this `IntegrationConfig`
+        # DEV: By-pass the `__setattr__` overrides from `AttrDict` to set real properties
+        object.__setattr__(self, 'global_config', global_config)
+        object.__setattr__(self, 'hooks', Hooks())
+        object.__setattr__(self, 'http', HttpConfig())
+
+        # Set default keys/values
+        # DEV: Default to `None` which means do not set this key
+        self['event_sample_rate'] = None
 
     def __deepcopy__(self, memodict=None):
         new = IntegrationConfig(self.global_config, deepcopy(dict(self)))
         new.hooks = deepcopy(self.hooks)
+        new.http = deepcopy(self.http)
         return new
+
+    def header_is_traced(self, header_name):
+        """
+        Returns whether or not the current header should be traced.
+        :param header_name: the header name
+        :type header_name: str
+        :rtype: bool
+        """
+        return (
+            self.http.header_is_traced(header_name)
+            if self.http.is_header_tracing_configured
+            else self.global_config.header_is_traced(header_name)
+        )
 
     def __repr__(self):
         cls = self.__class__
@@ -231,6 +275,54 @@ class Hooks(object):
         cls = self.__class__
         hooks = ','.join(self._hooks.keys())
         return '{}.{}({})'.format(cls.__module__, cls.__name__, hooks)
+
+
+class HttpConfig(object):
+    """
+    Configuration object that expose an API to set and retrieve both global and integration specific settings
+    related to the http context.
+    """
+
+    def __init__(self):
+        self._whitelist_headers = set()
+
+    @property
+    def is_header_tracing_configured(self):
+        return len(self._whitelist_headers) > 0
+
+    def trace_headers(self, whitelist):
+        """
+        Registers a set of headers to be traced at global level or integration level.
+        :param whitelist: the case-insensitive list of traced headers
+        :type whitelist: list of str or str
+        :return: self
+        :rtype: HttpConfig
+        """
+        if not whitelist:
+            return
+
+        whitelist = [whitelist] if isinstance(whitelist, str) else whitelist
+        for whitelist_entry in whitelist:
+            normalized_header_name = normalize_header_name(whitelist_entry)
+            if not normalized_header_name:
+                continue
+            self._whitelist_headers.add(normalized_header_name)
+
+        return self
+
+    def header_is_traced(self, header_name):
+        """
+        Returns whether or not the current header should be traced.
+        :param header_name: the header name
+        :type header_name: str
+        :rtype: bool
+        """
+        normalized_header_name = normalize_header_name(header_name)
+        log.debug('Checking header \'%s\' tracing in whitelist %s', normalized_header_name, self._whitelist_headers)
+        return normalized_header_name in self._whitelist_headers
+
+    def __repr__(self):
+        return '<HttpConfig traced_headers={}>'.format(self._whitelist_headers)
 
 
 # Configure our global configuration object

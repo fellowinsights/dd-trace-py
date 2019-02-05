@@ -1,8 +1,11 @@
 import sys
 
 from ddtrace.ext import http as httpx
+from ddtrace.http import store_request_headers, store_response_headers
 from ddtrace.propagation.http import HTTPPropagator
+
 from ...compat import iteritems
+from ...constants import EVENT_SAMPLE_RATE_KEY
 from ...ext import AppTypes
 from ...settings import config
 
@@ -36,8 +39,15 @@ class TraceMiddleware(object):
             span_type=httpx.TYPE,
         )
 
+        # Configure trace search sample rate
+        if config.falcon.event_sample_rate is not None:
+            span.set_tag(EVENT_SAMPLE_RATE_KEY, config.falcon.event_sample_rate)
+
         span.set_tag(httpx.METHOD, req.method)
         span.set_tag(httpx.URL, req.url)
+
+        # Note: any request header set after this line will not be stored in the span
+        store_request_headers(req.headers, span, config.falcon)
 
     def process_resource(self, req, resp, resource, params):
         span = self.tracer.current_span()
@@ -53,6 +63,9 @@ class TraceMiddleware(object):
             return  # unexpected
 
         status = httpx.normalize_status_code(resp.status)
+
+        # Note: any response header set after this line will not be stored in the span
+        store_response_headers(resp._headers, span, config.falcon)
 
         # FIXME[matt] falcon does not map errors or unmatched routes
         # to proper status codes, so we we have to try to infer them

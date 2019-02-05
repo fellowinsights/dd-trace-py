@@ -8,8 +8,11 @@ from .renderer import trace_rendering
 from .constants import CONFIG_MIDDLEWARE
 
 from ...compat import reraise
+from ...constants import EVENT_SAMPLE_RATE_KEY
 from ...ext import http, AppTypes
 from ...propagation.http import HTTPPropagator
+from ...settings import config as ddconfig
+
 
 log = logging.getLogger(__name__)
 
@@ -49,6 +52,10 @@ class PylonsTraceMiddleware(object):
             # set as early as possible when different services share one single agent.
             span.span_type = http.TYPE
 
+            # Configure trace search sample rate
+            if ddconfig.pylons.event_sample_rate is not None:
+                span.set_tag(EVENT_SAMPLE_RATE_KEY, ddconfig.pylons.event_sample_rate)
+
             if not span.sampled:
                 return self.app(environ, start_response)
 
@@ -73,7 +80,7 @@ class PylonsTraceMiddleware(object):
                     code = int(code)
                     if not 100 <= code < 600:
                         code = 500
-                except:
+                except Exception:
                     code = 500
                 span.set_tag(http.STATUS_CODE, code)
                 span.error = 1
