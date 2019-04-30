@@ -12,12 +12,13 @@ from ...settings import config
 from ...utils.wrappers import unwrap as _u
 
 span_name = 'httplib.request' if PY2 else 'http.client.request'
+service_name = "httplib" if PY2 else "http.client"
 
 log = get_logger(__name__)
 
 
 def _wrap_init(func, instance, args, kwargs):
-    Pin(app='httplib', service=None, app_type=ext_http.TYPE).onto(instance)
+    Pin(app=service_name, service=service_name, app_type=ext_http.TYPE).onto(instance)
     return func(*args, **kwargs)
 
 
@@ -55,7 +56,7 @@ def _wrap_putrequest(func, instance, args, kwargs):
 
     try:
         # Create a new span and attach to this instance (so we can retrieve/update/close later on the response)
-        span = pin.tracer.trace(span_name, span_type=ext_http.TYPE)
+        span = pin.tracer.trace(span_name, service=pin.service, span_type=ext_http.TYPE)
         setattr(instance, '_datadog_span', span)
 
         method, path = args[:2]
